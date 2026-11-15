@@ -1,0 +1,189 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ESP32 · 60 LED Control</title>
+<style>
+:root{font-family:system-ui,Arial;background:#0c1424;color:#eaf0fa}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1200px;margin:auto;padding:18px}header,.panel,.node{background:#162239;border:1px solid #30405b;border-radius:14px;padding:16px}header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}h1{font-size:23px;margin:0}h2{font-size:17px;margin:0 0 12px}small,.muted{color:#aab9d0}button,input,select,textarea{font:inherit}button{background:#2b4165;color:white;border:1px solid #526b91;border-radius:8px;padding:9px 12px;cursor:pointer}button:hover{filter:brightness(1.15)}button:disabled{opacity:.5;cursor:wait}.on{background:#087452}.off{background:#933c48}.primary{background:#245ed0}input,select,textarea{width:100%;background:#0e182b;color:white;border:1px solid #4b5c77;border-radius:7px;padding:9px}label{display:block;font-size:13px;margin:9px 0}label input,label select{margin-top:4px}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.layout{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:15px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px}.node{padding:12px}.node strong{font-size:14px}.dot{display:inline-block;width:13px;height:13px;border-radius:50%;background:#64748b;float:right}.dot.lit{background:#ffd24c;box-shadow:0 0 12px #ffcb38}.buttons{display:flex;gap:6px;margin-top:10px}.buttons button{flex:1;padding:7px 3px;font-size:12px}.panel{margin-bottom:13px}.status{color:#9fd6b7}.modebar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.modebar button.active{background:#245ed0;border-color:#83adff}.simtag{color:#ffd782;font-weight:600}.progress{height:9px;background:#0e182b;border-radius:10px;overflow:hidden;margin:10px 0}.progress>div{height:100%;background:#4e94fa;width:0%;transition:width .12s}.warn{color:#ffcb82}.log{font:11px monospace;max-height:180px;overflow:auto;white-space:pre-wrap}#count{margin-left:auto}.row{display:flex;gap:8px}.row>*{flex:1}.steps{width:100%;height:135px;font:12px monospace}footer{margin-top:16px;font-size:12px;color:#aab9d0}@media(max-width:850px){.layout{grid-template-columns:1fr}.wrap{padding:10px}}.selection-form{display:flex;align-items:end;gap:8px;flex-wrap:wrap}.selection-form label{margin:0;flex:1;min-width:180px}#selectionStatus{margin:8px 0 0}</style></head>
+<body><div class="wrap"><header><div><h1>◉ ESP32 · 60 LED Control</h1><small>ESP-NOW · Wi-Fi master · 9V LED loads</small></div><span id="connection" class="simtag">● Simulation · no hardware required</span></header>
+<section class="panel" style="margin:12px 0"><div class="modebar"><h2 style="margin:0">Node status source</h2><button id="commandBtn" class="active" onclick="setStatusMode('command')">Command Status · Simulation</button><button id="liveBtn" onclick="setStatusMode('live')">Live Status · ESP32</button></div><p id="modeHelp" class="muted">Command Status simulates dashboard instructions. It does not confirm physical LEDs.</p><div id="liveSummary"></div><div class="progress"><div id="seqBar"></div></div><div id="seqInfo" class="muted">No sequence running</div><button onclick="stopSimulation()" style="margin-top:8px">Stop simulated sequence</button></section><section class="panel"><h2>Active nodes</h2><form id="nodeSelectionForm" class="selection-form"><label for="nodeSelection">Node IDs or ranges<input id="nodeSelection" placeholder="2, 5, 10-15" aria-describedby="selectionHelp selectionStatus"></label><button class="primary" type="button" id="applySelection">Apply selection</button><button type="button" id="resetSelection">Use all 60</button></form><small id="selectionHelp">Enter an ID or inclusive range, such as 5 or 10-15. Separate multiple entries with commas. Only active nodes can be targeted. Leave blank to use all 60. A selection change stops pending simulation steps. Live commands already queued on the ESP32 continue.</small><p id="selectionStatus" role="status"></p></section><div class="toolbar"><button class="on" onclick="send('all','on')">ACTIVE ON</button><button class="off" onclick="send('all','off')">ACTIVE OFF</button><button class="primary" onclick="refresh()">Refresh status</button><label style="margin:0">Show <select id="filter" onchange="render()"><option value="all">All active</option><option value="online">Online</option><option value="offline">Offline</option><option value="on">LED ON</option></select></label><span id="count" class="muted"></span></div>
+<div class="layout"><main id="grid" class="grid"></main><aside>
+<section class="panel"><h2>Timed action</h2><label>Target<select id="target"><option value="all">All active nodes</option></select></label><label>Action<select id="mode"><option value="pulse">Pulse (ON then OFF)</option><option value="on">Turn ON</option><option value="off">Turn OFF</option></select></label><label>Delay (seconds)<input id="delay" type="number" min="0" max="120" step="0.001" value="0"></label><label>Pulse duration (seconds)<input id="duration" type="number" min="0.001" max="120" step="0.001" value="1"></label><button class="primary" onclick="timed()">Schedule action</button><small>Maximum delay and pulse duration: 120 seconds each.</small></section>
+<section class="panel"><h2>Number range · running lights</h2><small>Turn LEDs ON in numeric order, from the starting node through the ending node. Delay is the time between successive LEDs. Both endpoints must be active. Only active nodes between them are used. Previous LEDs stay ON until you turn them OFF.</small><div class="row"><label>Start node<select id="rangeStart"></select></label><label>End node<select id="rangeEnd"></select></label></div><label>Delay between LEDs (seconds)<input id="rangeDelay" type="number" min="0.1" max="120" step="0.001" value="0.5"></label><label>Action<select id="rangeMode"><option value="on">Turn ON in order</option><option value="off">Turn OFF in order</option></select></label><button class="primary" onclick="runRange()">Start range</button><small id="rangePreview" aria-live="polite"></small></section>
+<section class="panel"><h2>Programmed sequence</h2><small>One step per line: time_s,target,mode,duration_s. Use seconds, including decimals. Target: all active nodes or one active ID. Live mode allows 32 steps after targets are expanded.</small><textarea id="steps" class="steps" spellcheck="false">0,all,on,0
+1,all,off,0
+3,all,off,0</textarea><button class="primary" onclick="sequence()">Run sequence</button></section>
+<section class="panel"><h2>Activity</h2><div id="log" class="log"></div></section></aside></div><footer>Command Status is a simulation, not confirmation of physical LED operation. Live Status requires an ESP32 master and recent slave reports. Keep the master Wi-Fi network private. Test all loads with suitable LED drivers, MOSFETs, fuses, and cooling.</footer></div>
+<script>
+const $=id=>document.getElementById(id),nodes=Array.from({length:60},(_,i)=>({id:i+1,online:false,on:false,last_seen_ms_ago:-1,pending:false,expected_on:false,scheduled_at_ms:0}));
+const allIds=nodes.map(n=>n.id);
+let activeIds=new Set(allIds);
+let selectionRevision=0;
+const selectionKey='esp32-active-node-selection';
+function parseSelection(input){
+  if(!input.trim())return new Set(allIds);
+  const ids=new Set();
+  for(const part of input.split(/[,;]+/).filter(part=>part.trim())){
+    const match=part.trim().match(/^(\d+)(?:\s*[-–—−]\s*(\d+))?$/);
+    if(!match)throw Error('Use node IDs or ranges such as 2, 5, 10-15.');
+    const start=Number(match[1]),end=Number(match[2]??match[1]);
+    if(start<1||end>nodes.length||start>end)throw Error('Use IDs 1–60 and ranges with start ≤ end.');
+    for(let id=start;id<=end;id++)ids.add(id);
+  }
+  if(!ids.size)throw Error('Enter at least one node ID or click Use all 60.');
+  return new Set([...ids].sort((a,b)=>a-b));
+}
+function setSelection(input){
+  try{
+    const next=parseSelection(input);
+    const changed=[...next].join(',')!==[...activeIds].join(',');
+    if(changed&&simTimers.length)stopSimulation();
+    activeIds=next;
+    if(changed)selectionRevision++;
+    $('nodeSelection').value=input;
+    try{localStorage.setItem(selectionKey,input)}catch{}
+    $('selectionStatus').textContent=activeIds.size+' of '+nodes.length+' nodes active'+(activeIds.size===nodes.length?'':' · IDs '+[...activeIds].join(', '));
+    $('selectionStatus').className='status';
+    const previous=$('target').value;
+    const ids=[...activeIds];
+    const options=ids.map(id=>'<option value="'+id+'">Node '+id+'</option>').join('');
+    $('target').innerHTML='<option value="all">All active nodes</option>'+options;
+    $('target').value=activeIds.has(Number(previous))?previous:'all';
+    for(const [field,fallback] of [['rangeStart',ids[0]],['rangeEnd',ids.at(-1)]]){
+      const select=$(field),current=Number(select.value);
+      select.innerHTML=options;
+      select.value=String(!changed&&activeIds.has(current)?current:fallback);
+    }
+    previewRange();
+    render();
+  }catch(e){
+    $('selectionStatus').textContent=e.message;
+    $('selectionStatus').className='warn';
+  }
+}
+function targetIds(target){
+  if(target==='all')return [...activeIds];
+  if(!activeIds.has(target))throw Error('Node '+target+' is outside the active selection.');
+  return [target];
+}
+function milliseconds(value,min){
+  if(!/^\d*(?:\.\d{1,3})?$/.test(String(value).trim())||!String(value).trim())throw Error('Enter seconds with up to three decimal places.');
+  const ms=Math.round(Number(value)*1000);
+  if(ms<min||ms>120000)throw Error('Time must be between '+min/1000+' and 120 seconds.');
+  return ms;
+}
+function expandedSteps(steps){
+  return steps.flatMap(step=>step.target==='all'&&activeIds.size!==nodes.length
+    ?targetIds(step.target).map(target=>({...step,target}))
+    :[{...step,target:step.target==='all'?'all':targetIds(step.target)[0]}]);
+}
+async function queueLive(steps,allowBatches=false){
+  const expanded=expandedSteps(steps);
+  if(!allowBatches&&expanded.length>32)throw Error('This selection expands to '+expanded.length+' live steps. Use 32 or fewer per run.');
+  const revision=selectionRevision;
+  for(let i=0;i<expanded.length;i+=32){
+    if(revision!==selectionRevision)throw Error('Active selection changed. Remaining commands were stopped.');
+    await api('/api/sequence',{steps:expanded.slice(i,i+32)});
+  }
+  return expanded.length;
+}
+let statusMode='command',simStates=Array(60).fill(false),simTimers=[],simToken=0,simTotal=0,simDone=0,simRunning=false,liveSnapshot=null;
+function clearSimTimers(){simToken++;for(const t of simTimers)clearTimeout(t);simTimers=[];simRunning=false;}
+function stopSimulation(){clearSimTimers();$('seqInfo').textContent='Simulation stopped · current node states retained';log('Simulated sequence stopped');render()}
+function setStatusMode(m){statusMode=m;$('commandBtn').classList.toggle('active',m==='command');$('liveBtn').classList.toggle('active',m==='live');$('modeHelp').textContent=m==='command'?'Command Status: predicted LED states from dashboard commands; not physical confirmation.':'Live Status: reported output states from the ESP32 master. Offline nodes are unverified.';if(m==='live'){refresh()}else{$('connection').textContent='● Command simulation';$('connection').className='simtag';render()}}
+function scheduleSim(steps,label){clearSimTimers();const token=simToken;simTotal=steps.length;simDone=0;simRunning=true;$('seqBar').style.width='0%';$('seqInfo').textContent=label+' · 0 / '+simTotal;for(const step of steps){const timer=setTimeout(()=>{if(token!==simToken)return;const targets=targetIds(step.target).map(id=>id-1);for(const i of targets){if(i>=0&&i<60)simStates[i]=step.mode!=='off'}simDone++;$('seqBar').style.width=(simDone/simTotal*100)+'%';$('seqInfo').textContent=label+' · '+simDone+' / '+simTotal+' · '+(step.target==='all'?'ACTIVE NODES':`Node ${step.target}`)+' '+step.mode.toUpperCase();if(simDone===simTotal)simRunning=false;render()},step.at_ms);simTimers.push(timer);if(step.mode==='pulse'){simTimers.push(setTimeout(()=>{if(token!==simToken)return;const targets=targetIds(step.target).map(id=>id-1);for(const i of targets){if(i>=0&&i<60)simStates[i]=false}render()},step.at_ms+step.duration_ms))}}log('Simulation: '+label+' ('+steps.length+' steps)')}
+function simulateCommand(target,mode,delay_ms=0,duration_ms=0){scheduleSim([{target,mode,at_ms:delay_ms,duration_ms}],`${mode.toUpperCase()} ${target}`)}
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function log(t){$('log').textContent=new Date().toLocaleTimeString()+' '+t+'\n'+$('log').textContent.slice(0,3500)}
+function render(){const f=$('filter').value;const active=nodes.filter(n=>activeIds.has(n.id)).map(n=>({...n,on:statusMode==='command'?simStates[n.id-1]:n.on}));const shown=active.filter(n=>f==='all'||(f==='online'&&n.online)||(f==='offline'&&!n.online)||(f==='on'&&n.on));$('grid').innerHTML=shown.map(n=>`<div class="node"><strong>Node ${String(n.id).padStart(2,'0')}</strong><span class="dot ${n.on?'lit':''}"></span><div class="muted" style="font-size:12px;margin-top:6px">${statusMode==='command'?'SIMULATED · '+(n.on?'ON':'OFF'):(n.online?'Online':'Offline')+' · '+(n.on?'ON':'OFF')+' · '+(n.pending?'⏳ PENDING':'REPORTED')}<br>${statusMode==='command'?'Based on dashboard command':'Last report: '+(n.last_seen_ms_ago<0?'Never':Math.round(n.last_seen_ms_ago/1000)+'s ago')}</div><div class="buttons"><button class="on" onclick="send(${n.id},'on')">ON</button><button class="off" onclick="send(${n.id},'off')">OFF</button></div></div>`).join('');const on=active.filter(n=>n.on).length,online=active.filter(n=>n.online).length;
+$('count').textContent=shown.length+' visible · '+active.length+' active';
+$('liveSummary').textContent=statusMode==='command'
+  ?`${on} commanded ON · ${active.length-on} commanded OFF · ${simRunning?'Sequence running':'Ready'}`
+  :`${online}/${active.length} active online · ${on} reported ON · ${active.filter(n=>n.pending).length} awaiting confirmation`;}
+
+async function api(path,data){let r=await fetch(path,{method:data?'POST':'GET',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});let v=await r.json();if(!r.ok||!v.ok)throw Error(v.error||'HTTP '+r.status);return v}
+async function send(target,mode,delay_ms=0,duration_ms=0){
+  try{
+    targetIds(target);
+    if(statusMode==='command'){simulateCommand(target,mode,delay_ms,duration_ms);return}
+    if(target==='all'&&activeIds.size!==nodes.length){
+      const count=await queueLive([{target,mode,at_ms:delay_ms,duration_ms}],true);
+      log('Accepted '+mode+' for '+count+' active nodes');
+    }else{
+      const r=await api('/api/command',{target,mode,delay_ms,duration_ms});
+      log('Accepted '+mode+' '+target+' seq='+r.seq);
+    }
+    setTimeout(refresh,700);
+  }catch(e){log('ERROR: '+e.message);alert(e.message)}
+}
+function timed(){
+  try{
+    const value=$('target').value,target=value==='all'?value:Number(value),mode=$('mode').value;
+    send(target,mode,milliseconds($('delay').value,0),mode==='pulse'?milliseconds($('duration').value,1):0);
+  }catch(e){alert(e.message)}
+}
+function rangeValues(){
+  const start=Number($('rangeStart').value),end=Number($('rangeEnd').value),delay=milliseconds($('rangeDelay').value,100);
+  if(!activeIds.has(start)||!activeIds.has(end))throw Error('Choose active start and end nodes.');
+  const dir=end>=start?1:-1;
+  const ids=[...activeIds].filter(id=>id>=Math.min(start,end)&&id<=Math.max(start,end)).sort((a,b)=>dir*(a-b));
+  if(!ids.length)throw Error('There are no active nodes in this range.');
+  if((ids.length-1)*delay>120000)throw Error('Total sequence must fit within 120 seconds. Reduce the delay or node range.');
+  return {start,end,delay,ids};
+}
+function previewRange(){
+  try{
+    const {ids,delay}=rangeValues();
+    $('rangePreview').textContent=`${ids.length} active LEDs · ${((ids.length-1)*delay/1000).toFixed(3).replace(/\.?0+$/,'')} seconds`;
+  }catch(e){$('rangePreview').textContent=e.message}
+}
+async function runRange(){
+  try{
+    const {ids,delay,start,end}=rangeValues(),mode=$('rangeMode').value;
+    const steps=ids.map((target,i)=>({target,mode,at_ms:i*delay,duration_ms:0}));
+    if(statusMode==='command'){scheduleSim(steps,'Range '+start+' → '+end);return}
+    if(ids.length===Math.abs(ids.at(-1)-ids[0])+1){
+      await api('/api/range',{start:ids[0],end:ids.at(-1),delay_ms:delay,mode});
+    }else{
+      await queueLive(steps);
+    }
+    log('Range queued for '+ids.length+' active nodes');
+    refresh();
+  }catch(e){log('ERROR: '+e.message);alert(e.message)}
+}
+for(const id of ['rangeStart','rangeEnd','rangeDelay'])$(id).addEventListener('input',previewRange);
+async function sequence(){
+  try{
+    const steps=[];
+    for(const [i,line] of $('steps').value.split(/\n/).entries()){
+      if(!line.trim())continue;
+      const parts=line.split(',').map(s=>s.trim());
+      if(parts.length!==4)throw Error('Line '+(i+1)+' needs four values.');
+      const [at,raw,mode,duration]=parts,target=raw.toLowerCase()==='all'?'all':Number(raw);
+      targetIds(target);
+      if(!['on','off','pulse'].includes(mode))throw Error('Invalid action on line '+(i+1)+'.');
+      steps.push({at_ms:milliseconds(at,0),target,mode,duration_ms:milliseconds(duration,mode==='pulse'?1:0)});
+    }
+    if(steps.length<1||steps.length>32)throw Error('Use 1–32 sequence lines.');
+    if(statusMode==='command'){scheduleSim(steps,'Programmed sequence');return}
+    const count=await queueLive(steps);
+    log('Sequence queued: '+count+' steps');refresh();
+  }catch(e){log('ERROR: '+e.message);alert(e.message)}
+}
+let previousPending=0;async function refresh(){if(statusMode!=='live')return;try{let s=await api('/api/status');for(let n of s.nodes){if(n.id>=1&&n.id<=60)Object.assign(nodes[n.id-1],n)}const pending=nodes.filter(n=>activeIds.has(n.id)&&n.pending).length;
+if(previousPending>0&&pending===0)log('Latest scheduled commands confirmed (or superseded); check offline nodes');
+previousPending=pending;
+$('connection').textContent='● Master connected · channel '+s.channel;$('connection').className='status';render()}catch(e){$('connection').textContent='● Master unreachable';$('connection').className='warn';log('Status: '+e.message)}}
+function applyNodeSelection(){
+  const before=selectionRevision;
+  setSelection($('nodeSelection').value);
+  if(selectionRevision!==before){
+    $('filter').value='all';
+    render();
+  }
+}
+$('applySelection').addEventListener('click',applyNodeSelection);
+$('nodeSelectionForm').addEventListener('submit',event=>{event.preventDefault();applyNodeSelection()});
+$('resetSelection').addEventListener('click',()=>setSelection(''));
+let savedSelection='';
+try{savedSelection=localStorage.getItem(selectionKey)||''}catch{}
+setSelection(savedSelection);
+if(!$('target').value)setSelection('');
+setInterval(refresh,750);
+</script></body></html>
