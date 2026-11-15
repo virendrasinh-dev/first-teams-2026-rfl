@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101b2e"><title>Uttam's Project | ESP32 60 LED Control</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;background:#0c1424;color:#e9effa}
+*{box-sizing:border-box}body{margin:0}.wrap{max-width:1280px;margin:auto;padding:18px}
+header,.panel,.node{background:#162239;border:1px solid #344460;border-radius:14px;padding:15px}
+header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+h1{font-size:23px;margin:0 0 4px}h2{font-size:17px;margin:0 0 12px}h3{margin:0 0 6px;font-size:14px}
+small,.muted{color:#aebed4}small{line-height:1.55}
+button,input,select,textarea{font:inherit}
+button{background:#30476b;border:1px solid #52698c;color:white;padding:9px 12px;border-radius:8px;cursor:pointer}
+button:hover{filter:brightness(1.16)}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #90b4ff}
+.primary{background:#235fce}.on{background:#087652}.off{background:#9a3d48}
+input,select,textarea{width:100%;padding:9px;border:1px solid #536581;border-radius:8px;color:#fff;background:#0d192b}
+label{display:block;font-size:13px;margin:9px 0}.row{display:flex;gap:9px}.row>*{flex:1;min-width:0}
+.toolbar,.modebar{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:13px 0}.modebar button.active{background:#245ed0;border-color:#9abaff}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(154px,1fr));gap:10px}
+.node{padding:11px}.node strong{font-size:14px}.dot{float:right;border-radius:50%;width:15px;height:15px;background:#65748d}
+.dot.lit{background:#ffce42;box-shadow:0 0 13px #ffc73f}.buttons{display:flex;gap:6px;margin-top:10px}.buttons button{flex:1;padding:7px 3px;font-size:12px}
+.panel{margin-bottom:13px}.summary{display:flex;flex-wrap:wrap;gap:12px;color:#c3d1e5;font-size:13px;margin:12px 0}
+.progress{height:10px;border-radius:30px;background:#0d182b;overflow:hidden;margin:12px 0}
+.progress>div{height:100%;background:#5597ff;width:0%;transition:width .1s}
+.warning{color:#ffce82}.success{color:#8cdeb8}.tag{color:#ffce82;font-weight:700}
+.steps{height:136px;font:12px/1.5 ui-monospace,monospace}.log{max-height:190px;overflow:auto;font:11px/1.5 ui-monospace,monospace;white-space:pre-wrap}
+footer{font-size:12px;line-height:1.6;color:#9fb1c9;margin:16px 0 32px}
+@media(max-width:870px){.layout{grid-template-columns:1fr}.wrap{padding:10px}}
+</style></head><body><div class="wrap">
+<header><div><h1>◉ Uttam's Project · 60 LED Control</h1><small>ESP32 master · 60 ESP-NOW nodes · 9V LED outputs</small></div><span id="connection" class="tag">● Command simulation</span></header>
+<section class="panel" style="margin-top:13px">
+<h2>Node status source</h2>
+<div class="modebar"><button id="commandBtn" class="active" type="button">Command Status · Simulation</button><button id="liveBtn" type="button">Live Status · ESP32</button></div>
+<small id="modeHelp">Command Status predicts states from dashboard commands. It does not confirm any physical LED.</small>
+<div id="liveSettings" hidden><label>ESP32 master base URL (use blank when hosted on the ESP32 itself)<input id="masterUrl" placeholder="http://192.168.4.1"></label><small>GitHub Pages is HTTPS: browsers normally block direct HTTP requests to ESP32, and the master must support CORS for cross-origin access. For reliable Live mode, serve this page from the ESP32 at http://192.168.4.1/ while on its Wi-Fi.</small></div>
+<div id="summary" class="summary"></div>
+<div class="progress" aria-label="Sequence progress"><div id="seqBar"></div></div>
+<div id="seqInfo" class="muted">No sequence running</div>
+<button id="stopBtn" type="button" style="margin-top:9px">Stop simulated sequence</button>
+</section>
+<div class="toolbar"><button id="allOn" class="on">ALL ON</button><button id="allOff" class="off">ALL OFF</button><button id="refreshBtn" class="primary">Refresh live status</button><label style="margin:0">Filter <select id="filter"><option value="all">All nodes</option><option value="on">LED ON</option><option value="off">LED OFF</option><option value="online">Online</option><option value="offline">Offline</option></select></label><span class="muted" id="count"></span></div>
+<div class="layout"><main id="grid" class="grid"></main><aside>
+<section class="panel"><h2>Timed action</h2><label>Target<select id="target"><option value="all">All 60 nodes</option></select></label><label>Action<select id="mode"><option value="pulse">Pulse (ON → OFF)</option><option value="on">Turn ON</option><option value="off">Turn OFF</option></select></label><label>Delay (ms)<input id="delay" type="number" min="0" max="120000" value="0"></label><label>Pulse length (ms)<input id="duration" type="number" min="1" max="120000" value="1000"></label><button id="timedBtn" class="primary">Schedule action</button></section>
+<section class="panel"><h2>Number range · running lights</h2><small>Switch nodes in numeric order. Earlier LEDs remain ON during an ON sequence.</small><div class="row"><label>Start node<input id="rangeStart" type="number" min="1" max="60" value="1"></label><label>End node<input id="rangeEnd" type="number" min="1" max="60" value="60"></label></div><label>Delay between nodes (ms)<input id="rangeDelay" type="number" min="100" max="120000" value="500"></label><label>Action<select id="rangeMode"><option value="on">Turn ON sequentially</option><option value="off">Turn OFF sequentially</option></select></label><button id="rangeBtn" class="primary">Start range</button><div><small id="rangePreview">60 nodes · 29.5 seconds</small></div></section>
+<section class="panel"><h2>Programmed sequence</h2><small>One row per action: time_ms,target,mode,duration_ms. Target is all or 1–60. Up to 32 rows.</small><textarea id="steps" class="steps" spellcheck="false">0,all,on,0
+1000,all,off,0
+1500,1,on,0
+1700,2,on,0
+1900,3,on,0
+3000,all,off,0</textarea><button id="sequenceBtn" class="primary">Run sequence</button></section>
+<section class="panel"><h2>Activity log</h2><div id="log" class="log" aria-live="polite"></div></section>
+</aside></div>
+<footer>Simulation updates only the browser display. Live mode requires the ESP32 master API and slave status reports. A GitHub-hosted web page cannot send ESP-NOW directly. For high-power LED loads use properly rated drivers, fuses, MOSFETs and cooling; never power a 9V LED from an ESP32 GPIO.</footer>
+</div>
+<script>
+"use strict";
+const el=id=>document.getElementById(id);
+const liveNodes=Array.from({length:60},(_,i)=>({id:i+1,on:false,online:false,pending:false,last_seen_ms_ago:-1}));
+const simNodes=Array(60).fill(false);
+let mode="command",timers=[],generation=0,stepCount=0,stepDone=0,active=false;
+function note(msg){el("log").textContent=new Date().toLocaleTimeString()+"  "+msg+"\n"+el("log").textContent.slice(0,3500)}
+function clearSequence(){generation++;timers.forEach(clearTimeout);timers=[];active=false}
+function stopSequence(){if(mode!=="command"){note("Cancel is simulation-only; remote scheduled commands cannot be cancelled");return}clearSequence();el("seqInfo").textContent="Stopped · existing simulated LED states retained";note("Simulation stopped");draw()}
+function applyStep(s){const ids=s.target==="all"?Array.from({length:60},(_,i)=>i):[Number(s.target)-1];ids.forEach(i=>{if(i>=0&&i<60)simNodes[i]=s.mode!=="off"})}
+function runSimulation(steps,name){clearSequence();const ticket=generation;stepCount=steps.length;stepDone=0;active=true;el("seqBar").style.width="0%";el("seqInfo").textContent=name+" · 0 / "+stepCount;
+steps.forEach(s=>{timers.push(setTimeout(()=>{if(ticket!==generation)return;applyStep(s);stepDone++;el("seqBar").style.width=(100*stepDone/stepCount)+"%";el("seqInfo").textContent=name+" · "+stepDone+" / "+stepCount+" · "+String(s.target).toUpperCase()+" "+s.mode.toUpperCase();if(stepDone===stepCount)active=false;draw()},s.at_ms));if(s.mode==="pulse"){timers.push(setTimeout(()=>{if(ticket!==generation)return;applyStep({target:s.target,mode:"off"});draw()},s.at_ms+s.duration_ms))}});note("Simulation: "+name+" ("+steps.length+" steps)")}
+async function callApi(path,data){const base=el("masterUrl").value.trim().replace(/\/+$/,"");const res=await fetch(base+path,{method:data?"POST":"GET",headers:{"Content-Type":"application/json"},body:data?JSON.stringify(data):undefined});const result=await res.json();if(!res.ok||result.ok===false)throw Error(result.error||"HTTP "+res.status);return result}
+async function send(target,action,delay_ms=0,duration_ms=0){if(mode==="command"){runSimulation([{at_ms:delay_ms,target:target,mode:action,duration_ms:duration_ms}],action.toUpperCase()+" "+target);return}try{const reply=await callApi("/api/command",{target:target,mode:action,delay_ms:delay_ms,duration_ms:duration_ms});note("ESP32 accepted "+action+" "+target+" (seq "+reply.seq+")");refreshLive()}catch(e){note("Command failed: "+e.message)}}
+function draw(){const filter=el("filter").value;const shown=liveNodes.filter((n,i)=>{const lit=mode==="command"?simNodes[i]:n.on;return filter==="all"||(filter==="on"&&lit)||(filter==="off"&&!lit)||(filter==="online"&&n.online)||(filter==="offline"&&!n.online)});
+el("grid").innerHTML=shown.map(n=>{const lit=mode==="command"?simNodes[n.id-1]:n.on;const status=mode==="command"?"SIMULATED · "+(lit?"ON":"OFF"):(n.online?"ONLINE":"OFFLINE")+" · "+(lit?"ON":"OFF")+(n.pending?" · PENDING":"");return '<article class="node"><strong>Node '+String(n.id).padStart(2,"0")+'</strong><span class="dot '+(lit?"lit":"")+'"></span><div class="muted" style="font-size:12px;margin-top:7px">'+status+'<br>'+(mode==="command"?"Based on dashboard command":"Last report: "+(n.last_seen_ms_ago<0?"Never":Math.round(n.last_seen_ms_ago/1000)+"s ago"))+'</div><div class="buttons"><button class="on" data-node="'+n.id+'" data-action="on">ON</button><button class="off" data-node="'+n.id+'" data-action="off">OFF</button></div></article>'}).join("");
+const on=mode==="command"?simNodes.filter(Boolean).length:liveNodes.filter(n=>n.online&&n.on).length;
+el("count").textContent=mode==="command"?on+"/60 simulated ON":on+" reported ON · "+liveNodes.filter(n=>n.online).length+"/60 online";
+if(mode==="command")el("summary").textContent=on+" commanded ON   |   "+(60-on)+" commanded OFF   |   "+(active?"Sequence running":"Ready")}
+function setMode(next){mode=next;el("commandBtn").classList.toggle("active",mode==="command");el("liveBtn").classList.toggle("active",mode==="live");el("liveSettings").hidden=mode!=="live";el("stopBtn").disabled=mode==="live";el("modeHelp").textContent=mode==="command"?"Command Status: visual simulation of dashboard instructions, not confirmation from hardware.":"Live Status: current reports from ESP32. Offline nodes are unverified.";el("connection").textContent=mode==="command"?"● Command simulation":"● Connecting to master…";el("connection").className=mode==="command"?"tag":"warning";draw();if(mode==="live")refreshLive()}
+async function refreshLive(){if(mode!=="live")return;try{const data=await callApi("/api/status");if(!Array.isArray(data.nodes))throw Error("Invalid master status");data.nodes.forEach(n=>{if(n.id>=1&&n.id<=60)Object.assign(liveNodes[n.id-1],n)});el("summary").textContent=liveNodes.filter(n=>n.online).length+"/60 online  |  "+liveNodes.filter(n=>n.online&&n.on).length+" reported ON  |  "+liveNodes.filter(n=>n.pending).length+" pending  |  "+(data.commands_sent||0)+" commands sent";el("connection").textContent="● Master connected · channel "+data.channel;el("connection").className="success";draw()}catch(e){el("connection").textContent="● Master unreachable";el("connection").className="warning";el("summary").textContent="No verified live status. "+e.message;}}
+function positiveInt(x,min,max){return Number.isInteger(x)&&x>=min&&x<=max}
+function timed(){const delay=Number(el("delay").value),duration=Number(el("duration").value),action=el("mode").value,target=el("target").value==="all"?"all":Number(el("target").value);if(!positiveInt(delay,0,120000)||(action==="pulse"&&!positiveInt(duration,1,120000))){alert("Check delay and pulse duration");return}send(target,action,delay,duration)}
+function getRange(){const start=Number(el("rangeStart").value),end=Number(el("rangeEnd").value),delay=Number(el("rangeDelay").value);if(!positiveInt(start,1,60)||!positiveInt(end,1,60)||!positiveInt(delay,100,120000))throw Error("Start/end must be 1–60 and delay 100–120000 ms");const count=Math.abs(end-start)+1;if((count-1)*delay>120000)throw Error("Last action must occur within 120 seconds");return {start,end,delay,count}}
+function previewRange(){try{const r=getRange();el("rangePreview").textContent=r.count+" LEDs · "+((r.count-1)*r.delay/1000).toFixed(1)+"s · "+(r.end>=r.start?"ascending":"descending")}catch(e){el("rangePreview").textContent=e.message}}
+async function range(){try{const r=getRange(),action=el("rangeMode").value;if(mode==="command"){const step=r.end>=r.start?1:-1;const steps=Array.from({length:r.count},(_,i)=>({at_ms:i*r.delay,target:r.start+i*step,mode:action,duration_ms:0}));runSimulation(steps,"Range "+r.start+" → "+r.end);return}const result=await callApi("/api/range",{start:r.start,end:r.end,delay_ms:r.delay,mode:action});note("ESP32 queued range "+r.start+" → "+r.end+" ("+result.steps_accepted+" nodes)");refreshLive()}catch(e){note("Range error: "+e.message);alert(e.message)}}
+async function sequence(){try{const steps=[];for(const raw of el("steps").value.split(/\n/)){if(!raw.trim())continue;const p=raw.split(",").map(v=>v.trim());if(p.length!==4)throw Error("Each line requires 4 comma-separated values");const at=Number(p[0]),target=p[1]==="all"?"all":Number(p[1]),action=p[2],duration=Number(p[3]);if(!positiveInt(at,0,120000)||!(target==="all"||positiveInt(target,1,60))||!["on","off","pulse"].includes(action)||!positiveInt(duration,action==="pulse"?1:0,120000))throw Error("Invalid sequence value");steps.push({at_ms:at,target:target,mode:action,duration_ms:duration})}if(steps.length<1||steps.length>32)throw Error("Use 1–32 steps");if(mode==="command"){runSimulation(steps,"Programmed sequence");return}const result=await callApi("/api/sequence",{steps:steps});note("ESP32 queued "+result.steps_accepted+" sequence steps");refreshLive()}catch(e){note("Sequence error: "+e.message);alert(e.message)}}
+el("grid").addEventListener("click",e=>{const b=e.target.closest("button[data-node]");if(b)send(Number(b.dataset.node),b.dataset.action)});
+el("allOn").addEventListener("click",()=>send("all","on"));el("allOff").addEventListener("click",()=>send("all","off"));
+el("commandBtn").addEventListener("click",()=>setMode("command"));el("liveBtn").addEventListener("click",()=>setMode("live"));
+el("stopBtn").addEventListener("click",stopSequence);el("refreshBtn").addEventListener("click",refreshLive);
+el("filter").addEventListener("change",draw);el("timedBtn").addEventListener("click",timed);el("rangeBtn").addEventListener("click",range);el("sequenceBtn").addEventListener("click",sequence);
+["rangeStart","rangeEnd","rangeDelay"].forEach(id=>el(id).addEventListener("input",previewRange));
+for(let i=1;i<=60;i++){const o=document.createElement("option");o.value=i;o.textContent="Node "+i;el("target").appendChild(o)}
+previewRange();draw();note("Command simulation ready");setInterval(refreshLive,750);
+</script></body></html>
