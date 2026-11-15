@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Competition Head Dashboard | RFL Academy</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#edf3f4;color:#153038;font:15px/1.45 system-ui,sans-serif}header{background:#102b34;color:white;padding:24px max(18px,calc((100% - 1210px)/2))}header p{margin:0;color:#a5e2d5;font-weight:700}h1{margin:4px 0;font-size:clamp(25px,5vw,42px)}h2{margin:0 0 10px;font-size:21px}h3{margin:0;font-size:17px}main{max-width:1250px;margin:auto;padding:18px}nav,.toolbar,.metrics,.inline{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}button,input,select,textarea{font:inherit;color:inherit;border:1px solid #8ca3ab;background:white;border-radius:7px;padding:8px;min-height:42px}button{cursor:pointer}button[aria-pressed=true],.primary{background:#075751;color:white;border-color:#075751}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #117cab;outline-offset:2px}.toolbar input{flex:1;min-width:180px}.metrics button{flex:1 1 145px;text-align:left;padding:12px}.metrics strong{display:block;font-size:24px}.layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.panel,.card{background:white;border:1px solid #cbdce0;border-radius:10px;padding:14px}.panel .card{margin-top:8px}.card p{margin:6px 0}.muted{color:#45616a}.badge{background:#daeee8;color:#154f46;border-radius:6px;padding:2px 7px}.risk{background:#fce5d4;color:#823314}.card button{margin-top:4px}.formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}label{display:grid;gap:4px;font-weight:650}input,select,textarea{width:100%;min-width:0}textarea{min-height:72px}dialog{border:1px solid #91a9b0;border-radius:12px;width:min(760px,95vw);max-height:90vh;color:inherit}dialog::backdrop{background:#102b3499}dialog .inline{margin:12px 0 0}.kpi{display:grid;gap:9px}.kpi article{display:grid;grid-template-columns:2fr 95px 2fr;gap:9px;align-items:center}.source{color:#075751}nav{margin-top:12px}#notice{min-height:1.4em;margin:0 0 12px}.queue>summary{font-weight:750;font-size:16px}.queue>p{margin-bottom:0}.queue .card{padding:11px}details{margin:8px 0}summary{cursor:pointer}footer{margin-top:20px} [hidden]{display:none!important}@media(max-width:700px){.layout,.formgrid,.kpi article{grid-template-columns:1fr}}
+
+body{background:linear-gradient(135deg,#f0f6ff,#f4f0fa 60%,#ecf9f3);min-height:100vh}
+header{background:linear-gradient(112deg,#163065,#43338b 55%,#066560);border-bottom:4px solid #72ddbf}
+header p{color:#cbf7eb}
+#nav button{border-color:var(--line);background:var(--wash);color:var(--ink);font-weight:700}
+#nav button[aria-pressed=true],button.primary{background:var(--ink,#05664e);color:#fff;border-color:var(--ink,#05664e)}
+[data-tone="blue"]{--ink:#174589;--wash:#e4efff;--line:#b5ccf1}
+[data-tone="violet"]{--ink:#5c328f;--wash:#f0e7ff;--line:#d7c3f0}
+[data-tone="orange"]{--ink:#904018;--wash:#fff0df;--line:#f2cbab}
+[data-tone="red"]{--ink:#982b46;--wash:#ffe9ef;--line:#f0bdca}
+[data-tone="teal"]{--ink:#086359;--wash:#dcf6f0;--line:#a6dcd2}
+[data-tone="green"]{--ink:#296134;--wash:#e6f5e4;--line:#b6dcb5}
+[data-tone="slate"]{--ink:#405472;--wash:#ecf0f7;--line:#c9d4e4}
+.queue{border-color:var(--line);border-left:5px solid var(--ink);background:var(--wash)}
+.queue>summary{color:var(--ink)}
+.badge[data-tone]{color:var(--ink);background:var(--wash);font-weight:700;display:inline-block}
+.kpi article{border-left:5px solid var(--ink);background:var(--wash)}
+.kpi article strong{color:var(--ink)}
+</style></head>
+<body><header><p>RFL ACADEMY · COMPETITION DEPARTMENT</p><h1>Competition Head Dashboard</h1><p>Virendrasinh Vaghela · FY 2026–27</p></header>
+<main><nav id="nav" aria-label="Dashboard views"></nav>
+<div class="toolbar"><button class="primary" id="add">New task</button></div>
+<p id="notice" aria-live="polite"></p>
+<div class="toolbar" id="filters"><input id="query" type="search" aria-label="Search tasks" placeholder="Search tasks, centres, teams or owners"><select id="streamFilter" aria-label="Filter by workstream"></select><select id="statusFilter" aria-label="Filter by status"></select></div>
+<div id="content"></div><footer class="muted"><details><summary>Data &amp; backups</summary><p>Tasks and scores are saved in this browser. Export a backup to move them to another device.</p><div class="inline"><button id="backup">Export backup</button><button id="restore">Import backup</button><input id="importFile" type="file" accept=".json,application/json" hidden></div></details></footer></main>
+<dialog id="editor"><form id="taskForm"><h2 id="dialogTitle">Task details</h2><div class="formgrid" id="fields"></div><div class="inline"><button type="submit" class="primary">Save task</button><button type="button" id="cancel">Cancel</button><button type="button" id="remove">Delete task</button></div></form></dialog>
+<script>
+"use strict";
+const key = "rfl-competition-head-v1";
+const streams = ["Coach Allocation & Delivery","Coach Onboarding & Training","Robot Development & Coding","Competition Framework & Learning Resources","Centre Programs & Student Mentoring","Procurement, Inventory & Maintenance","Competition Operations","R&D Pipeline","New Competition Adoption"];
+const areas = ["Competition Performance & Robot Readiness","Documentation & Standards","Technical Excellence & Continuous Learning","Inventory & Resource Accountability","Innovation & R&D Contributions","Leadership, Communication & Teamwork","Program Development & Knowledge Sharing","Safety & Resource Care"];
+const statuses = ["Backlog","Planned","In progress","Waiting for decision","At risk","Blocked","Done","Cancelled"];
+const priorities = ["High","Medium","Low"];
+const tones=["blue","violet","teal","orange","red","green","slate"];
+const statusTones=["slate","blue","teal","violet","orange","red","green","slate"];
+const tabs = ["My day","All work","KPI review"];
+const fields = [
+ ["title","Task / milestone","text"],["stream","Workstream",streams],["centre","Centre","text"],["team","Competition / team","text"],
+ ["owner","Task owner","text"],["decision","Decision owner","text"],["status","Status",statuses],["priority","Priority",priorities],
+ ["due","Due date","date"],["follow","Follow-up date","date"],["next","Next action / expected output","textarea"],
+ ["blocker","Blocker / escalation","textarea"],["area","KPI area",["",...areas]],["evidence","Evidence URL","url"],
+ ["review","Review date","date"],["notes","Tests, resources, costs or pilot notes","textarea"]
+];
+const starters = [
+ ["Confirm Athena FTC coach coverage",0,"Delhi","Athena FTC","Confirm coach availability and flag uncovered sessions",5],
+ ["Confirm new coach training and readiness",1,"All centres","Competition coaches","Review assessment and readiness for independent assignment",2],
+ ["Review Lab Fusion integration milestone",2,"Surat","FRC Lab Fusion 12120","Confirm integration test and attach results",0],
+ ["Review competition blueprint and learning resources",3,"All centres","FRC / FTC","Check release dates for worksheets, handbooks and assessments",6],
+ ["Review centre delivery and student skills",4,"All centres","Centre programs","Collect session outcomes and demonstrations",6],
+ ["Reconcile shared resources and maintenance",5,"All centres","Shared inventory","Confirm shortages, transfers and named custodians",3],
+ ["Check FRC regional waitlists",6,"Mumbai / Surat","Sigma / Lab Fusion","Verify event status and identify decisions needed",0],
+ ["Evaluate FRC elevator LQR prototype",7,"R&D","FRC elevator","Define the test and acceptance criteria",4],
+ ["Review WRO Future Engineers pilot",8,"Delhi","WRO Future Engineers","Review rules, coach readiness, equipment, cost and go/no-go criteria",6]
+].map(([title,stream,centre,team,next,area],i)=>({id:"starter-"+i,title,stream:streams[stream],centre,team,next,area:areas[area],status:"Backlog",priority:"Medium",starter:true}));
+const get=id=>document.getElementById(id);
+const notice=msg=>{get("notice").textContent=msg};
+function valid(value){
+ if(value?.version!==1 || !Array.isArray(value.tasks) || !value.kpis || typeof value.kpis!=="object" || Array.isArray(value.kpis))return false;
+ const ids=new Set();
+ for(const task of value.tasks){
+   if(!task || typeof task.id!=="string" || ids.has(task.id) || typeof task.title!=="string" || !task.title.trim() || !streams.includes(task.stream) || !statuses.includes(task.status))return false;
+   if(fields.some(([name])=>task[name]!==undefined && typeof task[name]!=="string"))return false;
+   ids.add(task.id);
+ }
+ return Object.entries(value.kpis).every(([month,rows])=>/^\d{4}-\d{2}$/.test(month)&&rows&&typeof rows==="object"&&Object.entries(rows).every(([area,row])=>areas.includes(area)&&row&&(row.score===""||(typeof row.score==="number"&&row.score>=0&&row.score<=10))&&typeof row.evidence==="string"));
+}
+let state={version:1,tasks:starters,kpis:{}};
+try{const raw=localStorage.getItem(key);if(raw){const data=JSON.parse(raw);if(valid(data))state=data;else notice("Saved data could not be loaded. Import a valid backup.");}}catch{notice("Browser storage is unavailable. Export backups to retain changes.");}
+function save(){try{localStorage.setItem(key,JSON.stringify(state));notice("Saved in this browser.");}catch{notice("Browser storage is unavailable. Export a backup before closing.");}}
+const dateAt=offset=>{const d=new Date();d.setDate(d.getDate()+offset);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-")};
+let view=tabs[0], month=dateAt(0).slice(0,7), editing=null;
+function node(tag,text="",className=""){const el=document.createElement(tag);el.textContent=text;el.className=className;return el}
+function button(text,fn){const b=node("button",text);b.type="button";b.addEventListener("click",fn);return b}
+function options(el,values){for(const value of values){const op=node("option",value||"Select an area");op.value=value;el.append(op)}}
+function openTask(task){
+ editing=task?.id??null;
+ get("dialogTitle").textContent=task?.starter?"Activate review starter":task?"Edit task":"New task";
+ get("remove").hidden=!task;
+ get("fields").replaceChildren();
+ for(const [name,label,type] of fields){
+  const control=node(Array.isArray(type)?"select":type==="textarea"?"textarea":"input");
+  control.name=name;
+  if(Array.isArray(type))options(control,type);else if(type!=="textarea")control.type=type;
+  if(name==="title")control.required=true;
+  if(name==="evidence")control.placeholder="https://…";
+  const defaults={owner:"Virendra",priority:"Medium",status:"Planned",stream:view==="All work"&&streams.includes(get("streamFilter").value)?get("streamFilter").value:streams[0]};
+  control.value=task?.[name]??defaults[name]??(Array.isArray(type)?type[0]:"");
+  const wrap=node("label",label);wrap.append(control);get("fields").append(wrap);
+ }
+ get("editor").showModal();
+}
+function safeLink(raw,label){try{const url=new URL(raw);if(!["https:","http:"].includes(url.protocol))return null;const a=node("a",label,"source");a.href=url.href;a.target="_blank";a.rel="noopener noreferrer";return a}catch{return null}}
+function card(task){
+ const a=node("article","","card");
+ a.append(node("h3",task.title),node("p",[task.centre,task.team,task.stream].filter(Boolean).join(" · "),"muted"));
+ const badge=node("span",task.starter?"Review starter":task.status+(task.priority?" · "+task.priority:""),"badge");
+ badge.dataset.tone=task.starter?"slate":statusTones[statuses.indexOf(task.status)];
+ a.append(badge);
+ a.append(node("p",["Owner "+(task.owner||"unassigned"),task.decision?"Decision "+task.decision:"",task.due?"Due "+task.due:"",task.follow?"Follow-up "+task.follow:"",task.review?"Review "+task.review:""].filter(Boolean).join(" · ")));
+ if(task.next)a.append(node("p",task.next));
+ if(task.blocker)a.append(node("p","Escalation · "+task.blocker,"risk"));
+ if(task.notes){const details=node("details");details.append(node("summary","Notes"),node("p",task.notes));a.append(details);}
+ const actions=node("div","","inline");actions.append(button(task.starter?"Review and activate":"Edit",()=>openTask(task)));
+ const evidence=safeLink(task.evidence,"Open evidence");if(evidence)actions.append(evidence);a.append(actions);
+ return a;
+}
+function panel(title,list){const section=node("section","","panel");section.append(node("h2",title+" · "+list.length));if(!list.length)section.append(node("p","No matching items","muted"));else section.append(...list.map(card));return section}
+function showKpi(container){
+ const values=state.kpis[month]??{};
+ 
+ const bar=node("div","","inline");const selector=node("input");selector.type="month";selector.setAttribute("aria-label","Review month");selector.value=month;
+ selector.addEventListener("change",()=>{if(selector.value){month=selector.value;render()}});
+ const summary=node("h2");function update(){const numbers=areas.map(area=>state.kpis[month]?.[area]?.score).filter(x=>typeof x==="number");summary.textContent=numbers.length===8?numbers.reduce((a,b)=>a+b,0)+" / 80":numbers.length+" of 8 areas scored";}
+ update();bar.append(selector,summary);container.append(bar);
+ const grid=node("div","","kpi");container.append(grid);
+ for(const area of areas){
+  const row=node("article","","card");row.dataset.tone=tones[areas.indexOf(area)%tones.length];const score=node("input");score.type="number";score.min=0;score.max=10;score.step="any";score.placeholder="0–10";score.setAttribute("aria-label",area+" score");score.value=values[area]?.score??"";
+  const evidence=node("input");evidence.type="url";evidence.placeholder="Evidence URL";evidence.setAttribute("aria-label",area+" evidence");evidence.value=values[area]?.evidence??"";
+  const commit=()=>{if(!score.checkValidity()||!evidence.checkValidity()){notice("Enter a score between 0 and 10 and a valid evidence URL.");return}state.kpis[month]??={};state.kpis[month][area]={score:score.value===""?"":Number(score.value),evidence:evidence.value};save();update()};
+  score.addEventListener("change",commit);evidence.addEventListener("change",commit);
+  row.append(node("strong",area),score,evidence);grid.append(row);
+ }
+ const source=safeLink("https://chatgpt.com/library?file_id=libfile_bc4b3da7dbd08191a40b71449cae9a85&account_id=personal","Department performance framework");container.append(source);
+}
+function render(){
+ for(const b of get("nav").children)b.setAttribute("aria-pressed",String(b.textContent===view));
+ const c=get("content");c.replaceChildren();get("filters").hidden=view!=="All work";
+ if(view==="KPI review"){showKpi(c);return}
+ const search=view==="All work"?get("query").value.toLowerCase().trim():"", stream=view==="All work"?get("streamFilter").value:"All workstreams", status=view==="All work"?get("statusFilter").value:"All statuses";
+ const list=state.tasks.filter(task=>(stream==="All workstreams"||task.stream===stream)&&(status==="All statuses"||task.status===status)&&Object.values(task).join(" ").toLowerCase().includes(search)).sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999")||priorities.indexOf(a.priority)-priorities.indexOf(b.priority));
+ if(view==="All work"){
+  const shortcuts=node("div","","inline");
+  for(const name of ["All workstreams","R&D Pipeline","New Competition Adoption"])shortcuts.append(button(name==="All workstreams"?"All workstreams":name,()=>{get("streamFilter").value=name;get("query").value="";get("statusFilter").selectedIndex=0;render()}));
+  c.append(shortcuts,panel("Tasks",list));return;
+ }
+ const active=list.filter(t=>!t.starter&&!["Done","Cancelled"].includes(t.status));
+ const today=dateAt(0), week=dateAt(7);
+ const isMine=name=>["virendra","virendrasinh","virendrasinh vaghela","virendra vaghela"].includes(name?.trim().toLowerCase());
+ const decisions=active.filter(t=>isMine(t.decision)&&t.status==="Waiting for decision");
+ const blocked=active.filter(t=>["Blocked","At risk"].includes(t.status)&&!decisions.includes(t));
+ const myActions=active.filter(t=>isMine(t.owner)&&(!t.due||t.due<=week)&&!decisions.includes(t)&&!blocked.includes(t));
+ const delegated=active.filter(t=>t.owner&&!isMine(t.owner)&&t.follow&&t.follow<=week&&!decisions.includes(t)&&!blocked.includes(t));
+ const upcoming=active.filter(t=>t.due>=today&&t.due<=dateAt(30)&&!decisions.includes(t)&&!blocked.includes(t)&&!myActions.includes(t)&&!delegated.includes(t));
+ const evidence=list.filter(t=>!t.starter&&t.status==="Done"&&!t.evidence);
+ c.append(node("h2","My day"));
+ if(!active.length)c.append(node("p","Add a task to get started, or open All work to review the nine starter tasks.","muted"));
+ function queue(title,tasks,open,tone){
+  const section=node("details","","panel queue");
+  section.open=open;
+  section.dataset.tone=tone;
+  section.append(node("summary",title+" · "+tasks.length));
+  if(tasks.length) section.append(...tasks.map(card));
+  else section.append(node("p","Nothing here right now.","muted"));
+  return section;
+ }
+ for(const [title,tasks,tone] of [["My next actions",myActions,"blue"],["Decisions I need to make",decisions,"violet"],["Blocked or at risk",blocked,"red"],["Delegated follow-ups due",delegated,"orange"],["Upcoming milestones",upcoming,"teal"],["Completed work missing evidence",evidence,"green"]])c.append(queue(title,tasks,tasks.length>0&&["My next actions","Decisions I need to make","Blocked or at risk"].includes(title),tone));
+
+}
+for(const [i,tab] of tabs.entries()){
+ const control=button(tab,()=>{view=tab;get("streamFilter").selectedIndex=0;get("statusFilter").selectedIndex=0;render()});
+ control.dataset.tone=tones[i];
+ get("nav").append(control);
+}
+options(get("streamFilter"),["All workstreams",...streams]);options(get("statusFilter"),["All statuses",...statuses]);
+for(const id of ["query","streamFilter","statusFilter"])get(id).addEventListener("input",render);
+get("add").addEventListener("click",()=>openTask());get("cancel").addEventListener("click",()=>get("editor").close());
+get("taskForm").addEventListener("submit",event=>{
+ event.preventDefault();const task=Object.fromEntries(new FormData(event.currentTarget));task.title=task.title.trim();if(!task.title)return;
+ task.id=editing??(globalThis.crypto?.randomUUID?.()??Date.now()+"-"+Math.random());task.starter=false;
+ state.tasks=editing?state.tasks.map(item=>item.id===editing?task:item):[...state.tasks,task];get("editor").close();save();render();
+});
+get("remove").addEventListener("click",()=>{if(editing&&confirm("Delete this task from this browser?")){state.tasks=state.tasks.filter(t=>t.id!==editing);get("editor").close();save();render()}});
+get("backup").addEventListener("click",()=>{
+ const href=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:"application/json"}));const a=node("a");a.href=href;a.download="rfl-dashboard-"+dateAt(0)+".json";a.click();setTimeout(()=>URL.revokeObjectURL(href),1000);
+});
+get("restore").addEventListener("click",()=>get("importFile").click());
+get("importFile").addEventListener("change",async event=>{
+ const file=event.target.files[0];event.target.value="";if(!file)return;
+ try{const data=JSON.parse(await file.text());if(!valid(data))throw Error();if(!confirm("Replace the tasks and KPI reviews saved in this browser with this backup?"))return;state=data;save();render();}catch{notice("This file is not a valid dashboard backup. No changes were made.");}
+});
+render();
+</script></body></html>
